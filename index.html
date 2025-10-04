@@ -148,16 +148,13 @@
       setTimeout(() => getWeather(lat, lon, label), 10 * 60 * 1000);
     }
     (function initWeather(){
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => getWeather(pos.coords.latitude, pos.coords.longitude, 'Your Location'),
-          ()    => getWeather(WX_FALLBACK.lat, WX_FALLBACK.lon, WX_FALLBACK.name),
-          { timeout: 6000, maximumAge: 10 * 60 * 1000 }
-        );
-      } else {
-        getWeather(WX_FALLBACK.lat, WX_FALLBACK.lon, WX_FALLBACK.name);
-      }
-    })();
+  // Hardcode: New York City
+  const lat = 38.9586;
+  const lon = -77.3570;
+  const label = "Reston, VA";
+  getWeather(lat, lon, label);
+})();
+
 
 
     /* ========= BIG PLAY POPUP (USING NFL SCOREBOARD + SUMMARY) ========= */

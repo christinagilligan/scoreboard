@@ -81,7 +81,7 @@
       <div class="brand">🏟️ Live Scores</div>
       <div class="clock" id="clock">--:--:--</div>
       <div class="weather">
-        <span id="wx-location" class="chip">Reston, VA</span>
+        <span id="wx-location" class="chip">Locating…</span>
         <span class="wx-temp" id="wx-temp">--°</span>
         <span id="wx-desc">—</span>
         <span class="wx-hi-lo" id="wx-hi-lo">H --° / L --°</span>
@@ -114,152 +114,50 @@
   <script src="https://scorestream.com/apiJsCdn/widgets/embed.js" async></script>
 
   <script>
-    /* ====== Helpers (ES5-safe) ====== */
-    function safeGet(obj, path) {
-      // path like ["current","temperature_2m"]
-      for (var i = 0; i < path.length; i++) {
-        if (!obj || typeof obj !== "object" || !(path[i] in obj)) return undefined;
-        obj = obj[path[i]];
-      }
-      return obj;
+    /* ========= CLOCK ========= */
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clock').textContent =
+        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
-    
-    /* ====== Robust ET clock without Intl timeZone ====== */
-    (function(){
-      var clockEl = document.getElementById("clock");
-    
-      function nthSundayUTC(y, m, n) {
-        var first = new Date(Date.UTC(y, m, 1));
-        var firstDow = first.getUTCDay(); // 0=Sun
-        var day = 1 + ((7 - firstDow) % 7) + 7 * (n - 1);
-        return new Date(Date.UTC(y, m, day, 2, 0, 0)); // 02:00 UTC rule boundary
-      }
-    
-      function formatET(d) {
-        var y = d.getUTCFullYear();
-        var dstStart = nthSundayUTC(y, 2, 2);  // Mar, 2nd Sunday
-        var dstEnd   = nthSundayUTC(y, 10, 1); // Nov, 1st Sunday
-        var inDST = d >= dstStart && d < dstEnd;
-        var offset = inDST ? -4 : -5; // hours from UTC
-        var h = (d.getUTCHours() + offset + 24) % 24;
-        var m = d.getUTCMinutes();
-        var s = d.getUTCSeconds();
-        function pad(x){ return (x < 10 ? "0" : "") + x; }
-        return pad(h) + ":" + pad(m) + (inDST ? " EDT" : " EST");
-      }
-    
-      function tick(){
-        if (clockEl) clockEl.textContent = formatET(new Date());
-      }
-      document.addEventListener("DOMContentLoaded", function(){
-        tick();
-        setInterval(tick, 1000);
-      });
-    })();
-    </script>
-    
-    <script>
-      /* ====== Weather (Reston, VA) — Pi-tolerant ====== */
-      (function(){
-        var wxLocEl  = document.getElementById('wx-location');
-        var wxTempEl = document.getElementById('wx-temp');
-        var wxHiLoEl = document.getElementById('wx-hi-lo');
-        var wxDescEl = document.getElementById('wx-desc');
-      
-        var RESTON = { lat: 38.9586, lon: -77.3570, label: "Reston, VA" };
-        var W_DESC = {
-          0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Freezing fog',
-          51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',
-          66:'Freezing rain',67:'Freezing rain',
-          71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',
-          95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
-        };
-      
-        function safeGet(obj, path) {
-          for (var i = 0; i < path.length; i++) {
-            if (!obj || typeof obj !== "object" || !(path[i] in obj)) return undefined;
-            obj = obj[path[i]];
-          }
-          return obj;
-        }
-        function isNum(x){ return typeof x === "number" && isFinite(x); }
-        function roundMaybe(x){ return isNum(x) ? Math.round(x) : undefined; }
-      
-        function setWx(label, temp, hi, lo, code, descFallback) {
-          if (wxLocEl)  wxLocEl.textContent  = label;
-          if (wxTempEl) wxTempEl.textContent = isNum(temp) ? Math.round(temp) + "°" : "--";
-          if (wxHiLoEl) wxHiLoEl.textContent =
-            "H " + (isNum(hi)?Math.round(hi):"--") + "° / L " + (isNum(lo)?Math.round(lo):"--") + "°";
-          if (wxDescEl) wxDescEl.textContent = (W_DESC[code] || descFallback || "—");
-        }
-      
-        function fetchWeather(){
-          var url = "https://api.open-meteo.com/v1/forecast"
-            + "?latitude=" + RESTON.lat
-            + "&longitude=" + RESTON.lon
-            + "&current_weather=true" // most compatible current field
-            + "&current=temperature_2m,weather_code"
-            + "&hourly=temperature_2m"
-            + "&daily=temperature_2m_max,temperature_2m_min,weather_code"
-            + "&forecast_days=1"
-            + "&temperature_unit=fahrenheit"
-            + "&timezone=America%2FNew_York";
-      
-          function handleJson(j){
-            // Uncomment this once to inspect what the Pi actually receives:
-            console.log("Weather JSON:", j);
-      
-            // temp priority: current_weather.temperature → current.temperature_2m → hourly.temperature_2m[0]
-            var t1 = safeGet(j, ["current_weather","temperature"]);
-            var t2 = safeGet(j, ["current","temperature_2m"]);
-            var t3 = safeGet(j, ["hourly","temperature_2m",0]);
-            var temp = isNum(t1) ? t1 : isNum(t2) ? t2 : isNum(t3) ? t3 : undefined;
-      
-            // code priority: current_weather.weathercode → current.weather_code → daily.weather_code[0]
-            var c1 = safeGet(j, ["current_weather","weathercode"]);
-            var c2 = safeGet(j, ["current","weather_code"]);
-            var c3 = safeGet(j, ["daily","weather_code",0]);
-            var code = isNum(c1) ? c1 : isNum(c2) ? c2 : isNum(c3) ? c3 : undefined;
-      
-            var hi = safeGet(j, ["daily","temperature_2m_max",0]);
-            var lo = safeGet(j, ["daily","temperature_2m_min",0]);
-      
-            setWx(RESTON.label, temp, hi, lo, code, "Unavailable");
-          }
-      
-          function handleError(err){
-            console.error("Weather fetch failed:", err && (err.stack || err.message || err));
-            setWx(RESTON.label, undefined, undefined, undefined, undefined, "Unavailable");
-          }
-      
-          // fetch with XHR fallback for very old Chromium
-          if (typeof fetch === "function") {
-            fetch(url, { cache: "no-store" })
-              .then(function(r){ if (!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
-              .then(handleJson)
-              .catch(handleError)
-              .finally(function(){ setTimeout(fetchWeather, 10*60*1000); });
-          } else {
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", url, true);
-            xhr.onreadystatechange = function(){
-              if (xhr.readyState === 4) {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                  try { handleJson(JSON.parse(xhr.responseText)); }
-                  catch(e){ handleError(e); }
-                } else {
-                  handleError(new Error("HTTP "+xhr.status));
-                }
-                setTimeout(fetchWeather, 10*60*1000);
-              }
-            };
-            xhr.send();
-          }
-        }
-      
-        document.addEventListener("DOMContentLoaded", fetchWeather);
-      })();
+    updateClock(); setInterval(updateClock, 1000);
 
+    /* ========= WEATHER (Open-Meteo, Fahrenheit) ========= */
+    const WX_FALLBACK = { name: 'Washington, DC', lat: 38.9072, lon: -77.0369 };
+    async function getWeather(lat, lon, label) {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+        + `&current=temperature_2m,weather_code`
+        + `&hourly=temperature_2m`
+        + `&daily=temperature_2m_max,temperature_2m_min,weather_code`
+        + `&temperature_unit=fahrenheit`
+        + `&timezone=auto`;
+      const r = await fetch(url);
+      const j = await r.json();
+      const temp = Math.round(j.current?.temperature_2m ?? NaN);
+      const wcode = j.current?.weather_code ?? j.daily?.weather_code?.[0];
+      const hi = Math.round(j.daily?.temperature_2m_max?.[0] ?? NaN);
+      const lo = Math.round(j.daily?.temperature_2m_min?.[0] ?? NaN);
+      document.getElementById('wx-location').textContent = label;
+      document.getElementById('wx-temp').textContent = `${isFinite(temp) ? temp : '--'}°`;
+      document.getElementById('wx-hi-lo').textContent = `H ${isFinite(hi) ? hi : '--'}° / L ${isFinite(lo) ? lo : '--'}°`;
+      document.getElementById('wx-desc').textContent = ({
+        0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Freezing fog',
+        51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Freezing rain',
+        71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
+      })[wcode] || '—';
+      setTimeout(() => getWeather(lat, lon, label), 10 * 60 * 1000);
+    }
+    (function initWeather(){
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => getWeather(pos.coords.latitude, pos.coords.longitude, 'Your Location'),
+          ()    => getWeather(WX_FALLBACK.lat, WX_FALLBACK.lon, WX_FALLBACK.name),
+          { timeout: 6000, maximumAge: 10 * 60 * 1000 }
+        );
+      } else {
+        getWeather(WX_FALLBACK.lat, WX_FALLBACK.lon, WX_FALLBACK.name);
+      }
+    })();
 
 
     /* ========= BIG PLAY POPUP (USING NFL SCOREBOARD + SUMMARY) ========= */
@@ -267,11 +165,11 @@
     const BIGPLAY = {
       hoursBack: 1,
       fixedDates: null,
-      pollMs: 20000,
+      pollMs: 20_000,
       bigGainYards: 50,
       sound: false,
       vibrate: false,
-      autoDismissMs: 10000
+      autoDismissMs: 10_000
     };
 
     // Big-play keywords
@@ -351,9 +249,7 @@
     // Apply team theme + logo
     function applyTeamTheme(style) {
       const logoEl = document.getElementById('bigplay-logo');
-      var color = (style && style.color) 
-  ? ('#' + String(style.color).replace('#','')) 
-  : null;
+      const color = style?.color ? ('#' + String(style.color).replace('#','')) : null;
 
       if (color) {
         document.documentElement.style.setProperty('--team', color);
@@ -495,7 +391,7 @@
     function datesParam() {
       if (BIGPLAY.fixedDates) return BIGPLAY.fixedDates;
       const end = new Date();
-      const start = new Date(end.getTime() - BIGPLAY.hoursBack * 3600000);
+      const start = new Date(end.getTime() - BIGPLAY.hoursBack * 3600_000);
       const toYMD = d => d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
       return `${toYMD(start)}-${toYMD(end)}`;
     }

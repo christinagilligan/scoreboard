@@ -267,11 +267,11 @@
     const BIGPLAY = {
       hoursBack: 1,
       fixedDates: null,
-      pollMs: 20_000,
+      pollMs: 20000,
       bigGainYards: 50,
       sound: false,
       vibrate: false,
-      autoDismissMs: 10_000
+      autoDismissMs: 10000
     };
 
     // Big-play keywords
@@ -493,7 +493,7 @@
     function datesParam() {
       if (BIGPLAY.fixedDates) return BIGPLAY.fixedDates;
       const end = new Date();
-      const start = new Date(end.getTime() - BIGPLAY.hoursBack * 3600_000);
+      const start = new Date(end.getTime() - BIGPLAY.hoursBack * 3600000);
       const toYMD = d => d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
       return `${toYMD(start)}-${toYMD(end)}`;
     }

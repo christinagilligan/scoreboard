@@ -81,7 +81,7 @@
       <div class="brand">🏟️ Live Scores</div>
       <div class="clock" id="clock">--:--:--</div>
       <div class="weather">
-        <span id="wx-location" class="chip">Locating…</span>
+        <span id="wx-location" class="chip">Reston, VA</span>
         <span class="wx-temp" id="wx-temp">--°</span>
         <span id="wx-desc">—</span>
         <span class="wx-hi-lo" id="wx-hi-lo">H --° / L --°</span>
@@ -114,41 +114,46 @@
   <script src="https://scorestream.com/apiJsCdn/widgets/embed.js" async></script>
 
   <script>
-    /* ========= CLOCK ========= */
+    /* ========= CLOCK (fixed to Reston / America/New_York) ========= */
+    const CLOCK_FMT = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/New_York',
+      hour12: false
+    });
+  
     function updateClock() {
-      const now = new Date();
-      document.getElementById('clock').textContent =
-        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      document.getElementById('clock').textContent = CLOCK_FMT.format(new Date()) + ' ET';
     }
-    updateClock(); setInterval(updateClock, 1000);
+    updateClock();
+    setInterval(updateClock, 1000);
+/* ========= WEATHER (Open-Meteo, Fahrenheit; fixed to Reston) ========= */
+async function getWeather(lat, lon, label) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+    + `&current=temperature_2m,weather_code`
+    + `&hourly=temperature_2m`
+    + `&daily=temperature_2m_max,temperature_2m_min,weather_code`
+    + `&temperature_unit=fahrenheit`
+    + `&timezone=America%2FNew_York`;   // << pin to ET (Reston)
+  const r = await fetch(url);
+  const j = await r.json();
+  const temp = Math.round(j.current?.temperature_2m ?? NaN);
+  const wcode = j.current?.weather_code ?? j.daily?.weather_code?.[0];
+  const hi = Math.round(j.daily?.temperature_2m_max?.[0] ?? NaN);
+  const lo = Math.round(j.daily?.temperature_2m_min?.[0] ?? NaN);
+  document.getElementById('wx-location').textContent = label;
+  document.getElementById('wx-temp').textContent = `${isFinite(temp) ? temp : '--'}°`;
+  document.getElementById('wx-hi-lo').textContent = `H ${isFinite(hi) ? hi : '--'}° / L ${isFinite(lo) ? lo : '--'}°`;
+  document.getElementById('wx-desc').textContent = ({
+    0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Freezing fog',
+    51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Freezing rain',
+    71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
+  })[wcode] || '—';
+  setTimeout(() => getWeather(lat, lon, label), 10 * 60 * 1000);
+}
 
-    /* ========= WEATHER (Open-Meteo, Fahrenheit) ========= */
-    const WX_FALLBACK = { name: 'Washington, DC', lat: 38.9072, lon: -77.0369 };
-    async function getWeather(lat, lon, label) {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-        + `&current=temperature_2m,weather_code`
-        + `&hourly=temperature_2m`
-        + `&daily=temperature_2m_max,temperature_2m_min,weather_code`
-        + `&temperature_unit=fahrenheit`
-        + `&timezone=auto`;
-      const r = await fetch(url);
-      const j = await r.json();
-      const temp = Math.round(j.current?.temperature_2m ?? NaN);
-      const wcode = j.current?.weather_code ?? j.daily?.weather_code?.[0];
-      const hi = Math.round(j.daily?.temperature_2m_max?.[0] ?? NaN);
-      const lo = Math.round(j.daily?.temperature_2m_min?.[0] ?? NaN);
-      document.getElementById('wx-location').textContent = label;
-      document.getElementById('wx-temp').textContent = `${isFinite(temp) ? temp : '--'}°`;
-      document.getElementById('wx-hi-lo').textContent = `H ${isFinite(hi) ? hi : '--'}° / L ${isFinite(lo) ? lo : '--'}°`;
-      document.getElementById('wx-desc').textContent = ({
-        0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Freezing fog',
-        51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Freezing rain',
-        71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
-      })[wcode] || '—';
-      setTimeout(() => getWeather(lat, lon, label), 10 * 60 * 1000);
-    }
-    (function initWeather(){
-  // Hardcode: New York City
+/* Hardcode: Reston */
+(function initWeather(){
   const lat = 38.9586;
   const lon = -77.3570;
   const label = "Reston, VA";

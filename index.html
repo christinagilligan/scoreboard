@@ -113,54 +113,109 @@
   <!-- Scorestream script -->
   <script src="https://scorestream.com/apiJsCdn/widgets/embed.js" async></script>
 
-  <script>
-    /* ========= CLOCK (fixed to Reston / America/New_York) ========= */
-    const CLOCK_FMT = new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'America/New_York',
-      hour12: false
-    });
+  <<script>
+    /* ======= ET CLOCK with robust fallback ======= */
+    (function(){
+      const ZONE = "America/New_York";
+    
+      function tzSupported(tz) {
+        try { new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(0); return true; }
+        catch { return false; }
+      }
+    
+      // Fallback ET formatter (handles US DST without Intl timeZone)
+      function formatETFallback(d = new Date()) {
+        // Compute US DST window in UTC
+        const year = d.getUTCFullYear();
+        function nthSundayUTC(y, m, n) { // month 0-based; returns Date at 02:00 UTC that day
+          const first = new Date(Date.UTC(y, m, 1));
+          const firstDow = first.getUTCDay(); // 0=Sun
+          const day = 1 + ((7 - firstDow) % 7) + 7 * (n - 1); // first Sunday + (n-1) weeks
+          return new Date(Date.UTC(y, m, day, 2, 0, 0));      // 02:00 for rule boundary
+        }
+        const dstStart = nthSundayUTC(year, 2, 2);  // second Sunday in March, 02:00 UTC
+        const dstEnd   = nthSundayUTC(year, 10, 1); // first Sunday in November, 02:00 UTC
+        const inDST = d >= dstStart && d < dstEnd;
+    
+        const offsetHours = inDST ? -4 : -5; // ET offsets from UTC
+        let h = (d.getUTCHours() + offsetHours + 24) % 24;
+        const m = d.getUTCMinutes();
+        const s = d.getUTCSeconds();
+        const pad = (x) => String(x).padStart(2, "0");
+        return `${pad(h)}:${pad(m)}:${pad(s)} ${inDST ? "EDT" : "EST"}`;
+      }
+    
+      let formatClock;
+      if (tzSupported(ZONE)) {
+        const fmt = new Intl.DateTimeFormat("en-US", {
+          hour: "2-digit", minute: "2-digit", second: "2-digit",
+          hour12: false, timeZone: ZONE
+        });
+        formatClock = () => fmt.format(new Date()) + " ET";
+      } else {
+        // Old Chromium fallback
+        formatClock = () => formatETFallback(new Date());
+      }
+    
+      function updateClock() {
+        const el = document.getElementById("clock");
+        if (el) el.textContent = formatClock();
+      }
+    
+      // Wait for DOM just in case the script loads in <head>
+      document.addEventListener("DOMContentLoaded", () => {
+        updateClock();
+        setInterval(updateClock, 1000);
+      });
+    })();
+    </script>
+
+<script>
+  /* ======= WEATHER pinned to Reston, VA (with robust error handling) ======= */
+  (function(){
+    const lat = 38.9586, lon = -77.3570, label = "Reston, VA";
   
-    function updateClock() {
-      document.getElementById('clock').textContent = CLOCK_FMT.format(new Date()) + ' ET';
+    async function getWeather() {
+      const url = `https://api.open-meteo.com/v1/forecast`
+        + `?latitude=${lat}&longitude=${lon}`
+        + `&current=temperature_2m,weather_code`
+        + `&daily=temperature_2m_max,temperature_2m_min,weather_code`
+        + `&temperature_unit=fahrenheit`
+        + `&timezone=America%2FNew_York`;
+  
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+  
+        const temp = Math.round(j.current?.temperature_2m ?? NaN);
+        const hi   = Math.round(j.daily?.temperature_2m_max?.[0] ?? NaN);
+        const lo   = Math.round(j.daily?.temperature_2m_min?.[0] ?? NaN);
+        const w    = j.current?.weather_code ?? j.daily?.weather_code?.[0];
+  
+        const desc = ({
+          0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Freezing fog',
+          51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Freezing rain',
+          71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
+        })[w] || '—';
+  
+        document.getElementById('wx-location')?.textContent = label;
+        document.getElementById('wx-temp')?.textContent     = Number.isFinite(temp) ? `${temp}°` : '--°';
+        document.getElementById('wx-hi-lo')?.textContent    = `H ${Number.isFinite(hi)?hi:'--'}° / L ${Number.isFinite(lo)?lo:'--'}°`;
+        document.getElementById('wx-desc')?.textContent     = desc;
+      } catch (err) {
+        console.error("Weather fetch failed:", err);
+        document.getElementById('wx-temp')?.textContent  = '--°';
+        document.getElementById('wx-hi-lo')?.textContent = 'H --° / L --°';
+        document.getElementById('wx-desc')?.textContent  = 'Unavailable';
+      } finally {
+        setTimeout(getWeather, 10 * 60 * 1000); // refresh every 10 min
+      }
     }
-    updateClock();
-    setInterval(updateClock, 1000);
-/* ========= WEATHER (Open-Meteo, Fahrenheit; fixed to Reston) ========= */
-async function getWeather(lat, lon, label) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-    + `&current=temperature_2m,weather_code`
-    + `&hourly=temperature_2m`
-    + `&daily=temperature_2m_max,temperature_2m_min,weather_code`
-    + `&temperature_unit=fahrenheit`
-    + `&timezone=America%2FNew_York`;   // << pin to ET (Reston)
-  const r = await fetch(url);
-  const j = await r.json();
-  const temp = Math.round(j.current?.temperature_2m ?? NaN);
-  const wcode = j.current?.weather_code ?? j.daily?.weather_code?.[0];
-  const hi = Math.round(j.daily?.temperature_2m_max?.[0] ?? NaN);
-  const lo = Math.round(j.daily?.temperature_2m_min?.[0] ?? NaN);
-  document.getElementById('wx-location').textContent = label;
-  document.getElementById('wx-temp').textContent = `${isFinite(temp) ? temp : '--'}°`;
-  document.getElementById('wx-hi-lo').textContent = `H ${isFinite(hi) ? hi : '--'}° / L ${isFinite(lo) ? lo : '--'}°`;
-  document.getElementById('wx-desc').textContent = ({
-    0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Freezing fog',
-    51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Freezing rain',
-    71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
-  })[wcode] || '—';
-  setTimeout(() => getWeather(lat, lon, label), 10 * 60 * 1000);
-}
-
-/* Hardcode: Reston */
-(function initWeather(){
-  const lat = 38.9586;
-  const lon = -77.3570;
-  const label = "Reston, VA";
-  getWeather(lat, lon, label);
-})();
-
-
+  
+    document.addEventListener("DOMContentLoaded", getWeather);
+  })();
+  </script>
 
     /* ========= BIG PLAY POPUP (USING NFL SCOREBOARD + SUMMARY) ========= */
     // Config

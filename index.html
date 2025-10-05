@@ -113,109 +113,153 @@
   <!-- Scorestream script -->
   <script src="https://scorestream.com/apiJsCdn/widgets/embed.js" async></script>
 
-  <<script>
-    /* ======= ET CLOCK with robust fallback ======= */
+  <script>
+    /* ====== Helpers (ES5-safe) ====== */
+    function safeGet(obj, path) {
+      // path like ["current","temperature_2m"]
+      for (var i = 0; i < path.length; i++) {
+        if (!obj || typeof obj !== "object" || !(path[i] in obj)) return undefined;
+        obj = obj[path[i]];
+      }
+      return obj;
+    }
+    
+    /* ====== Robust ET clock without Intl timeZone ====== */
     (function(){
-      const ZONE = "America/New_York";
+      var clockEl = document.getElementById("clock");
     
-      function tzSupported(tz) {
-        try { new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(0); return true; }
-        catch { return false; }
+      function nthSundayUTC(y, m, n) {
+        var first = new Date(Date.UTC(y, m, 1));
+        var firstDow = first.getUTCDay(); // 0=Sun
+        var day = 1 + ((7 - firstDow) % 7) + 7 * (n - 1);
+        return new Date(Date.UTC(y, m, day, 2, 0, 0)); // 02:00 UTC rule boundary
       }
     
-      // Fallback ET formatter (handles US DST without Intl timeZone)
-      function formatETFallback(d = new Date()) {
-        // Compute US DST window in UTC
-        const year = d.getUTCFullYear();
-        function nthSundayUTC(y, m, n) { // month 0-based; returns Date at 02:00 UTC that day
-          const first = new Date(Date.UTC(y, m, 1));
-          const firstDow = first.getUTCDay(); // 0=Sun
-          const day = 1 + ((7 - firstDow) % 7) + 7 * (n - 1); // first Sunday + (n-1) weeks
-          return new Date(Date.UTC(y, m, day, 2, 0, 0));      // 02:00 for rule boundary
-        }
-        const dstStart = nthSundayUTC(year, 2, 2);  // second Sunday in March, 02:00 UTC
-        const dstEnd   = nthSundayUTC(year, 10, 1); // first Sunday in November, 02:00 UTC
-        const inDST = d >= dstStart && d < dstEnd;
-    
-        const offsetHours = inDST ? -4 : -5; // ET offsets from UTC
-        let h = (d.getUTCHours() + offsetHours + 24) % 24;
-        const m = d.getUTCMinutes();
-        const s = d.getUTCSeconds();
-        const pad = (x) => String(x).padStart(2, "0");
-        return `${pad(h)}:${pad(m)}:${pad(s)} ${inDST ? "EDT" : "EST"}`;
+      function formatET(d) {
+        var y = d.getUTCFullYear();
+        var dstStart = nthSundayUTC(y, 2, 2);  // Mar, 2nd Sunday
+        var dstEnd   = nthSundayUTC(y, 10, 1); // Nov, 1st Sunday
+        var inDST = d >= dstStart && d < dstEnd;
+        var offset = inDST ? -4 : -5; // hours from UTC
+        var h = (d.getUTCHours() + offset + 24) % 24;
+        var m = d.getUTCMinutes();
+        var s = d.getUTCSeconds();
+        function pad(x){ return (x < 10 ? "0" : "") + x; }
+        return pad(h) + ":" + pad(m) + ":" + (inDST ? " EDT" : " EST");
       }
     
-      let formatClock;
-      if (tzSupported(ZONE)) {
-        const fmt = new Intl.DateTimeFormat("en-US", {
-          hour: "2-digit", minute: "2-digit", second: "2-digit",
-          hour12: false, timeZone: ZONE
-        });
-        formatClock = () => fmt.format(new Date()) + " ET";
-      } else {
-        // Old Chromium fallback
-        formatClock = () => formatETFallback(new Date());
+      function tick(){
+        if (clockEl) clockEl.textContent = formatET(new Date());
       }
-    
-      function updateClock() {
-        const el = document.getElementById("clock");
-        if (el) el.textContent = formatClock();
-      }
-    
-      // Wait for DOM just in case the script loads in <head>
-      document.addEventListener("DOMContentLoaded", () => {
-        updateClock();
-        setInterval(updateClock, 1000);
+      document.addEventListener("DOMContentLoaded", function(){
+        tick();
+        setInterval(tick, 1000);
       });
     })();
     </script>
-
-<script>
-  /* ======= WEATHER pinned to Reston, VA (with robust error handling) ======= */
-  (function(){
-    const lat = 38.9586, lon = -77.3570, label = "Reston, VA";
-  
-    async function getWeather() {
-      const url = `https://api.open-meteo.com/v1/forecast`
-        + `?latitude=${lat}&longitude=${lon}`
-        + `&current=temperature_2m,weather_code`
-        + `&daily=temperature_2m_max,temperature_2m_min,weather_code`
-        + `&temperature_unit=fahrenheit`
-        + `&timezone=America%2FNew_York`;
-  
-      try {
-        const r = await fetch(url, { cache: "no-store" });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const j = await r.json();
-  
-        const temp = Math.round(j.current?.temperature_2m ?? NaN);
-        const hi   = Math.round(j.daily?.temperature_2m_max?.[0] ?? NaN);
-        const lo   = Math.round(j.daily?.temperature_2m_min?.[0] ?? NaN);
-        const w    = j.current?.weather_code ?? j.daily?.weather_code?.[0];
-  
-        const desc = ({
-          0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Freezing fog',
-          51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Freezing rain',
-          71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
-        })[w] || '—';
-  
-        document.getElementById('wx-location')?.textContent = label;
-        document.getElementById('wx-temp')?.textContent     = Number.isFinite(temp) ? `${temp}°` : '--°';
-        document.getElementById('wx-hi-lo')?.textContent    = `H ${Number.isFinite(hi)?hi:'--'}° / L ${Number.isFinite(lo)?lo:'--'}°`;
-        document.getElementById('wx-desc')?.textContent     = desc;
-      } catch (err) {
-        console.error("Weather fetch failed:", err);
-        document.getElementById('wx-temp')?.textContent  = '--°';
-        document.getElementById('wx-hi-lo')?.textContent = 'H --° / L --°';
-        document.getElementById('wx-desc')?.textContent  = 'Unavailable';
-      } finally {
-        setTimeout(getWeather, 10 * 60 * 1000); // refresh every 10 min
+    
+    <script>
+    /* ====== Weather (Reston, VA) with ES5 parsing + error-robustness ====== */
+    (function(){
+      var wxLocEl  = document.getElementById('wx-location');
+      var wxTempEl = document.getElementById('wx-temp');
+      var wxHiLoEl = document.getElementById('wx-hi-lo');
+      var wxDescEl = document.getElementById('wx-desc');
+    
+      var RESTON = { lat: 38.9586, lon: -77.3570, label: "Reston, VA" };
+      var W_DESC = {
+        0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Freezing fog',
+        51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',
+        66:'Freezing rain',67:'Freezing rain',
+        71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',
+        95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
+      };
+    
+      function isNum(x){ return typeof x === "number" && isFinite(x); }
+    
+      function setWx(label, temp, hi, lo, code, descFallback) {
+        if (wxLocEl)  wxLocEl.textContent  = label;
+        if (wxTempEl) wxTempEl.textContent = isNum(temp) ? Math.round(temp) + "°" : "--";
+        if (wxHiLoEl) wxHiLoEl.textContent =
+          "H " + (isNum(hi)?Math.round(hi):"--") + "° / L " + (isNum(lo)?Math.round(lo):"--") + "°";
+        if (wxDescEl) wxDescEl.textContent = (W_DESC[code] || descFallback || "—");
       }
-    }
-  
-    document.addEventListener("DOMContentLoaded", getWeather);
-  })();
-  </script>
+    
+      function fetchWeather(){
+        var url = "https://api.open-meteo.com/v1/forecast"
+          + "?latitude=" + RESTON.lat
+          + "&longitude=" + RESTON.lon
+          + "&current=temperature_2m,weather_code"
+          + "&current_weather=true"
+          + "&daily=temperature_2m_max,temperature_2m_min,weather_code"
+          + "&forecast_days=1"
+          + "&temperature_unit=fahrenheit"
+          + "&timezone=America%2FNew_York";
+    
+        // Use fetch if available; otherwise XHR fallback
+        if (typeof fetch === "function") {
+          fetch(url, { cache: "no-store" })
+            .then(function(r){ if (!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+            .then(updateFromJson)
+            .catch(handleError)
+            .finally(scheduleNext);
+        } else {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", url, true);
+          xhr.onreadystatechange = function(){
+            if (xhr.readyState === 4) {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try { updateFromJson(JSON.parse(xhr.responseText)); }
+                catch(e){ handleError(e); }
+              } else {
+                handleError(new Error("HTTP "+xhr.status));
+              }
+              scheduleNext();
+            }
+          };
+          xhr.send();
+        }
+      }
+    
+      function updateFromJson(j){
+        // Try multiple shapes, no optional chaining:
+        var temp =
+          (function(){ var v = safeGet(j, ["current","temperature_2m"]); return isNum(v)?v:undefined; })();
+        if (typeof temp === "undefined") {
+          var t2 = safeGet(j, ["current_weather","temperature"]);
+          if (isNum(t2)) temp = t2;
+        }
+    
+        var code =
+          (function(){ var v = safeGet(j, ["current","weather_code"]); return isNum(v)?v:undefined; })();
+        if (typeof code === "undefined") {
+          var c2 = safeGet(j, ["current_weather","weathercode"]);
+          if (isNum(c2)) code = c2;
+        }
+        if (typeof code === "undefined") {
+          var c3 = safeGet(j, ["daily","weather_code",0]);
+          if (isNum(c3)) code = c3;
+        }
+    
+        var hi = safeGet(j, ["daily","temperature_2m_max",0]);
+        var lo = safeGet(j, ["daily","temperature_2m_min",0]);
+    
+        setWx(RESTON.label, temp, hi, lo, code, "Unavailable");
+      }
+    
+      function handleError(err){
+        console.error("Weather fetch failed:", err && (err.stack || err.message || err));
+        setWx(RESTON.label, undefined, undefined, undefined, undefined, "Unavailable");
+      }
+    
+      function scheduleNext(){ setTimeout(fetchWeather, 10 * 60 * 1000); }
+    
+      document.addEventListener("DOMContentLoaded", function(){
+        fetchWeather();
+      });
+    })();
+
+
 
     /* ========= BIG PLAY POPUP (USING NFL SCOREBOARD + SUMMARY) ========= */
     // Config

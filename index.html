@@ -351,7 +351,9 @@
     // Apply team theme + logo
     function applyTeamTheme(style) {
       const logoEl = document.getElementById('bigplay-logo');
-      const color = style?.color ? ('#' + String(style.color).replace('#','')) : null;
+      var color = (style && style.color) 
+  ? ('#' + String(style.color).replace('#','')) 
+  : null;
 
       if (color) {
         document.documentElement.style.setProperty('--team', color);

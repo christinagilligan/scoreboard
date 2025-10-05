@@ -2,54 +2,101 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Scoreboard + Clock + Weather + Big Play</title>
+  <title>NFL Live Scores — Fit Grid + Big Play Popup</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root {
-      --bg: #0b1320;
-      --panel: #121a2b;
-      --text: #e9eefc;
-      --muted: #9fb0d1;
-      --accent: #3aa0ff;
-      --up: #20c997;      /* green */
-      --down: #ff6b6b;    /* red */
-      --bar-bg: #0d1730;
+    :root{
+      /* Base sizing (used when Fit-to-screen is OFF; JS overrides when ON) */
+      --base: 20px;
+      --card-w: 380px;
+      --card-h: 190px;
+      --gap: 14px; /* tighter gap to fit more size */
 
-      /* Team-theming (will be set dynamically) */
+      /* Colors */
+      --bg:#0b1320; --panel:#121a2b; --text:#e9eefc; --muted:#9fb0d1; --accent:#3aa0ff;
+      --live:#20c997; --final:#9fb0d1; --danger:#ff6b6b; --shadow: rgba(0,0,0,0.25);
+
+      /* Big Play team-theming (set dynamically) */
       --team: #20c997;
       --team-contrast: #031018;
     }
     * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    body { padding-bottom: 10px; } /* space for fixed stock bar */
-
-    .layout { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+    html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: var(--base); }
     header {
-      display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center;
-      padding: 12px 16px; background: linear-gradient(180deg, #0d1730 0%, #0b1320 100%);
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display:flex; align-items:center; justify-content:space-between; gap:16px;
+      padding:18px 22px; border-bottom:1px solid #1a2440;
+      position:sticky; top:0; background:linear-gradient(0deg, rgba(11,19,32,0.95), rgba(11,19,32,0.95)); backdrop-filter: blur(6px); z-index:2;
     }
-    .brand { font-weight: 700; letter-spacing: .5px; color: var(--muted); }
-    .clock { font-size: clamp(22px, 4vw, 40px); font-weight: 700; text-align: center; }
-    .weather { display: flex; justify-content: flex-end; align-items: center; gap: 14px; color: var(--muted); font-size: clamp(12px, 1.8vw, 16px); white-space: nowrap; }
-    .wx-temp { font-size: clamp(16px, 2.5vw, 22px); font-weight: 700; color: var(--text); }
-    .wx-hi-lo { font-variant-numeric: tabular-nums; }
-    .chip { padding: 6px 10px; border-radius: 999px; background: var(--panel); color: var(--text); border: 1px solid rgba(255,255,255,0.08); }
+    h1 { margin:0; font-size:1.4rem; letter-spacing:.3px; }
+    .meta { color:var(--muted); font-size:.9rem; }
 
-    main { padding: 10px; }
-    .card {
-      background: var(--panel);
-      border: 1px solid rgba(255,255,255,0.08);
+    .controls { display:flex; align-items:center; gap:10px; flex-wrap: wrap; }
+    .btn{
+      background:var(--panel); color:var(--text); border:1px solid #223059; border-radius:12px; padding:10px 14px; cursor:pointer;
+      box-shadow:0 2px 8px var(--shadow); font-size:1rem;
+    }
+    .btn:hover{ border-color:var(--accent); }
+    .btn[disabled]{ opacity:.55; cursor:not-allowed; }
+    select, input[type="checkbox"]{ accent-color: var(--accent); }
+    select{
+      background:var(--panel); color:var(--text); border:1px solid #223059; border-radius:10px; padding:8px 10px; font-size:1rem;
+    }
+
+    .viewport-wrap{ padding:16px; }
+    .viewport {
+      margin: 0 auto;
+      width: max-content;     /* shrink-wrap to grid */
+      max-width: 100%;
+      overflow: hidden;
       border-radius: 18px;
-      padding: 10px;
-      height: calc(100vh - 110px - 62px);
-      display: flex; flex-direction: column;
+      border: 1px solid #1a2440;
+      box-shadow: 0 10px 24px var(--shadow);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00));
     }
-    .scorestream-widget-container { width: 100%; flex: 1 1 auto; min-height: 240px; border-radius: 12px; overflow: hidden; }
 
+    /* Grid sized by CSS variables set from JS (rows/cols) */
+    #grid{
+      display:grid; gap: var(--gap);
+      grid-template-columns: repeat(var(--cols, 3), var(--card-w));
+      grid-auto-rows: var(--card-h);
+      padding: var(--gap);
+    }
 
-    /* ===== BIG PLAY POPUP (obnoxious, TEAM-THEMED) ===== */
+    .card{
+      background:var(--panel); border:1px solid #1a2440; border-radius:18px; padding:14px; box-shadow: 0 6px 16px var(--shadow);
+      display:flex; flex-direction:column; gap:12px; min-height:var(--card-h);
+    }
+    .row { display:grid; grid-template-columns: 1fr auto; align-items:center; gap:10px; }
+    .team { display:flex; align-items:center; gap:12px; min-width:0; }
+    .team img{ width:34px; height:34px; border-radius:50%; background:#0b1320; }
+    .name{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text); font-size:1.05rem; }
+    .score{ font-weight:800; font-size:2.2rem; line-height:1; }
+    .leader{ color:#cfe9ff; }
+    .status{
+      display:flex; align-items:center; justify-content:space-between; font-size:.95rem; color:var(--muted);
+      border-top:1px dashed #213154; padding-top:8px; margin-top:2px;
+    }
+    /* Pill fix: never wrap + slightly smaller */
+    .pill{
+      padding:2px 10px; border-radius:999px; border:1px solid #213154; font-weight:600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem;
+    }
+    .live{ color:var(--live); border-color: var(--live); }
+    .final{ color:var(--final); }
+    .pregame{ color:var(--muted); }
+    .tiny{font-size:.9rem; color:var(--muted);}
+    .pos{ color:var(--danger); margin-left:6px; font-size:1.2rem; }
+    .redzone{ color:var(--danger); font-weight:700; margin-left:6px; }
+
+    .pager{
+      display:flex; align-items:center; justify-content:center; gap:10px; padding:8px 0 16px;
+      color:var(--muted); font-size:1rem;
+    }
+    footer{ text-align:center; padding:10px; color:var(--muted); font-size:.9rem;}
+
+    /* ===== BIG PLAY POPUP (TEAM-THEMED) ===== */
     #bigplay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.55); z-index: 99999; }
+    #bigplay.show { display:flex; }
     #bigplay-card {
       max-width: 1000px; width: min(94vw, 1000px);
       background: #0b1320;
@@ -73,34 +120,56 @@
     #bigplay-text { color:#e9eefc; font-size: clamp(1.25rem, 3.2vw, 2rem); line-height: 1.35; font-weight: 800; text-shadow: 0 0 12px rgba(58,160,255,.5); margin-bottom: 6px; }
     @keyframes bp-flash { 0%,100%{ box-shadow:0 30px 120px rgba(0,0,0,.8), 0 0 20px color-mix(in oklab, var(--team) 45%, transparent) inset; border-color:var(--team) } 50%{ box-shadow:0 30px 120px rgba(0,0,0,.8), 0 0 60px color-mix(in oklab, var(--team) 75%, transparent) inset; }}
     @keyframes bp-shake { 0%,100%{ transform: translateY(0) } 20%{ transform: translateY(-2px) } 40%{ transform: translateY(1px) } 60%{ transform: translateY(-1px) } 80%{ transform: translateY(2px) } }
+
+    /* Responsive fallback for tiny screens if Fit-to-screen is OFF */
+    @media (max-width: 1280px){
+      :root{ --card-w: 320px; --card-h: 180px; --base: 18px; }
+    }
+    @media (max-width: 1024px){
+      :root{ --card-w: 300px; --card-h: 170px; --base: 17px; }
+    }
   </style>
 </head>
 <body>
-  <div class="layout">
-    <header>
-      <div class="brand">🏟️ Live Scores</div>
-      <div class="clock" id="clock">--:--:--</div>
-      <div class="weather">
-        <span id="wx-location" class="chip">Locating…</span>
-        <span class="wx-temp" id="wx-temp">--°</span>
-        <span id="wx-desc">—</span>
-        <span class="wx-hi-lo" id="wx-hi-lo">H --° / L --°</span>
-      </div>
-    </header>
+  <header>
+    <div>
+      <h1>🏈 NFL Live Scores</h1>
+      <div class="meta">Auto-refresh 30s • Paginated grid • ESPN Scoreboard • Big Play Alerts</div>
+    </div>
+    <div class="controls">
+      <label class="meta" for="layout">Layout:</label>
+      <select id="layout" title="Choose rows × cols">
+        <option value="3x3" selected>3 × 3</option>
+        <option value="3x4">3 × 4</option>
+        <option value="4x3">4 × 3</option>
+        <option value="2x3">2 × 3</option>
+        <option value="2x4">2 × 4</option>
+      </select>
 
-    <main>
-      <div class="card">
-        <!-- Scorestream widget -->
-        <div class="scorestream-widget-container"
-             data-ss_widget_type="horzScoreboard"
-             data-user-widget-id="66524">
-        </div>
+      <label class="meta" for="fit">Fit to screen:</label>
+      <input type="checkbox" id="fit" checked />
+
+      <button id="prevBtn" class="btn" title="Previous page (←)">‹ Prev</button>
+      <button id="nextBtn" class="btn" title="Next page (→)">Next ›</button>
+      <button id="refreshBtn" class="btn" title="Refresh now">↻ Refresh</button>
+
+      <!-- Optional: manual test button for the popup -->
+      <button id="testPopup" class="btn" title="Test Big Play popup">Test Popup</button>
+    </div>
+  </header>
+
+  <div class="viewport-wrap">
+    <div id="viewport" class="viewport">
+      <main id="grid" aria-live="polite"></main>
+      <div class="pager">
+        <div id="pageInfo">Page 1 / 1</div>
       </div>
-    </main>
+    </div>
   </div>
 
+  <footer id="footnote"></footer>
 
-  <!-- BIG PLAY POPUP -->
+  <!-- BIG PLAY POPUP OVERLAY -->
   <div id="bigplay" aria-live="assertive" style="display:none;">
     <div id="bigplay-card">
       <img id="bigplay-logo" alt="" />
@@ -110,87 +179,294 @@
     </div>
   </div>
 
-  <!-- Scorestream script -->
-  <script src="https://scorestream.com/apiJsCdn/widgets/embed.js" async></script>
-
   <script>
-    /* ========= CLOCK ========= */
-    function updateClock() {
-      const now = new Date();
-      document.getElementById('clock').textContent =
-        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit'});
-    }
-    updateClock(); setInterval(updateClock, 1000);
+    /* =================== GRID SCOREBOARD (ESPN) =================== */
+    const ENDPOINT = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard";
+    const grid = document.getElementById("grid");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const layoutSel = document.getElementById("layout");
+    const pageInfo = document.getElementById("pageInfo");
+    const foot = document.getElementById("footnote");
+    const viewport = document.getElementById("viewport");
+    const fitChk = document.getElementById("fit");
+    const testPopupBtn = document.getElementById("testPopup");
+    const REFRESH_MS = 30_000;
 
-    /* ========= WEATHER (Open-Meteo, Fahrenheit) ========= */
-    const WX_FALLBACK = { name: 'Washington, DC', lat: 38.9072, lon: -77.0369 };
-    async function getWeather(lat, lon, label) {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-        + `&current=temperature_2m,weather_code`
-        + `&hourly=temperature_2m`
-        + `&daily=temperature_2m_max,temperature_2m_min,weather_code`
-        + `&temperature_unit=fahrenheit`
-        + `&timezone=auto`;
-      const r = await fetch(url);
-      const j = await r.json();
-      const temp = Math.round(j.current?.temperature_2m ?? NaN);
-      const wcode = j.current?.weather_code ?? j.daily?.weather_code?.[0];
-      const hi = Math.round(j.daily?.temperature_2m_max?.[0] ?? NaN);
-      const lo = Math.round(j.daily?.temperature_2m_min?.[0] ?? NaN);
-      document.getElementById('wx-location').textContent = label;
-      document.getElementById('wx-temp').textContent = `${isFinite(temp) ? temp : '--'}°`;
-      document.getElementById('wx-hi-lo').textContent = `H ${isFinite(hi) ? hi : '--'}° / L ${isFinite(lo) ? lo : '--'}°`;
-      document.getElementById('wx-desc').textContent = ({
-        0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Freezing fog',
-        51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Freezing rain',
-        71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
-      })[wcode] || '—';
-      setTimeout(() => getWeather(lat, lon, label), 10 * 60 * 1000);
-    }
-    (function initWeather(){
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => getWeather(pos.coords.latitude, pos.coords.longitude, 'Your Location'),
-          ()    => getWeather(WX_FALLBACK.lat, WX_FALLBACK.lon, WX_FALLBACK.name),
-          { timeout: 6000, maximumAge: 10 * 60 * 1000 }
-        );
-      } else {
-        getWeather(WX_FALLBACK.lat, WX_FALLBACK.lon, WX_FALLBACK.name);
+    // Paging/layout state
+    let rows = 3, cols = 3;
+    let perPage = rows * cols;
+    let currentPage = 0;
+    let events = [];
+
+    // Measured layout elements
+    const headerEl = document.querySelector("header");
+    const footerEl = document.getElementById("footnote");
+    const pagerEl  = document.querySelector(".pager");
+
+    // Fit parameters
+    const GAP = 14;                // match --gap
+    const ASPECT = 2.0;            // width:height (≈ 380:190)
+    const MIN_CARD_W = 260;
+    const MIN_CARD_H = 130;
+
+    function parseLayout(val){
+      const [r, c] = val.split("x").map(n => parseInt(n.trim(),10));
+      if(Number.isFinite(r) && Number.isFinite(c) && r>0 && c>0){
+        rows = r; cols = c;
+        perPage = rows * cols;
+        fitToViewport();
+        renderPage();
       }
-    })();
+    }
 
+    // Dynamically size cards to fill available space
+    function fitToViewport(){
+      grid.style.setProperty("--cols", cols);
 
-    /* ========= BIG PLAY POPUP (USING NFL SCOREBOARD + SUMMARY) ========= */
+      if(!fitChk.checked){
+        // Fixed sizing mode (CSS defaults)
+        viewport.style.width = "";
+        viewport.style.height = "";
+        document.documentElement.style.fontSize = "";
+        return;
+      }
+
+      const headerH = headerEl?.offsetHeight || 0;
+      const footH   = footerEl?.offsetHeight || 0;
+      const pagerH  = pagerEl?.offsetHeight  || 0;
+
+      const verticalPadding = 16 /*viewport-wrap*/ + 2 /*border approx*/;
+      const availW = window.innerWidth  - 2*16; // page side padding guard
+      const availH = window.innerHeight - headerH - footH - verticalPadding;
+
+      const innerAvailH = Math.max(0, availH - pagerH);
+      const totalGapW = (cols + 1) * GAP;
+      const totalGapH = (rows + 1) * GAP;
+
+      // Option A: fit by width
+      const cardW_fromW = Math.floor((availW - totalGapW) / cols);
+      const cardH_fromW = Math.floor(cardW_fromW / ASPECT);
+
+      // Option B: fit by height
+      const cardH_fromH = Math.floor((innerAvailH - totalGapH) / rows);
+      const cardW_fromH = Math.floor(cardH_fromH * ASPECT);
+
+      // Choose the size that fits both axes
+      let cardW = Math.min(cardW_fromW, cardW_fromH);
+      let cardH = Math.min(cardH_fromW, cardH_fromH);
+
+      // Minimums to keep text readable
+      cardW = Math.max(MIN_CARD_W, cardW);
+      cardH = Math.max(MIN_CARD_H, cardH);
+
+      // Verify it fits; shrink proportionally if needed
+      const neededW = cols * cardW + totalGapW;
+      const neededH = rows * cardH + totalGapH + pagerH;
+
+      if(neededW > availW){
+        const k = availW / neededW;
+        cardW = Math.floor(cardW * k);
+        cardH = Math.floor(cardH * k);
+      }
+      if(neededH > innerAvailH){
+        const k = innerAvailH / neededH;
+        cardW = Math.floor(cardW * k);
+        cardH = Math.floor(cardH * k);
+      }
+
+      // Apply CSS custom props
+      document.documentElement.style.setProperty("--card-w", `${cardW}px`);
+      document.documentElement.style.setProperty("--card-h", `${cardH}px`);
+
+      // Size the viewport to the exact grid outline (nice framed rectangle)
+      const viewportW = cols * cardW + totalGapW;
+      const viewportH = rows * cardH + totalGapH + pagerH;
+      viewport.style.width  = `${viewportW}px`;
+      viewport.style.height = `${viewportH}px`;
+
+      // Scale base font according to card height
+      const basePx = Math.max(18, Math.min(28, Math.round(cardH / 7.2)));
+      document.documentElement.style.fontSize = `${basePx}px`;
+    }
+
+    function pageCount(){ return Math.max(1, Math.ceil(events.length / perPage)); }
+    function clampPage(){
+      const pc = pageCount();
+      if(currentPage >= pc) currentPage = pc - 1;
+      if(currentPage < 0) currentPage = 0;
+    }
+
+    function renderPage(){
+      clampPage();
+      const start = currentPage * perPage;
+      const end = start + perPage;
+      const slice = events.slice(start, end);
+      grid.innerHTML = slice.length
+        ? slice.map(renderGame).join("")
+        : `<div class="card"><div>No NFL games found for today.</div></div>`;
+      pageInfo.textContent = `Page ${pageCount() ? (currentPage+1) : 0} / ${pageCount()}`;
+      prevBtn.disabled = currentPage <= 0;
+      nextBtn.disabled = currentPage >= pageCount()-1;
+    }
+
+    function fmtTime(iso){
+      try{
+        const d = new Date(iso);
+        return d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+      }catch{ return ""; }
+    }
+    const possessionDot = (hasPossession) => hasPossession ? '<span class="pos">•</span>' : '';
+
+    function statusPill(comp){
+      if(!comp) return '<span class="pill pregame">—</span>';
+      const st = comp.status?.type?.state;
+      if(st === "pre"){
+        const t = fmtTime(comp.date);
+        return `<span class="pill pregame">Not Started · ${t}</span>`;
+      }
+      if(st === "in"){
+        const q = comp.status?.period ?? '';
+        const clk = comp.status?.displayClock ?? '';
+        const ovt = (q > 4) ? "OT" : `Q${q || 1}`;
+        return `<span class="pill live">LIVE · ${ovt} ${clk}</span>`;
+      }
+      if(st === "post"){
+        const label = comp.status?.type?.completed ? "Final" : comp.status?.type?.name || "Final";
+        return `<span class="pill final">${label}</span>`;
+      }
+      return `<span class="pill">${comp.status?.type?.name || '—'}</span>`;
+    }
+
+    function logoFor(team){
+      const logos = team?.logos || (team?.logo ? [team.logo] : []);
+      return (logos?.[0]?.href) || logos?.[0] || "https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard_default.png";
+    }
+
+    function renderGame(evt){
+      const comp = evt.competitions?.[0];
+      if(!comp) return '';
+      const competitors = [...(comp.competitors || [])]
+        .sort((a,b)=> Number(a.homeAway==="away") - Number(b.homeAway==="away")); // away first, then home
+
+      const [away, home] = competitors;
+      const awayScore = away?.score ?? '0';
+      const homeScore = home?.score ?? '0';
+
+      const aLead = Number(awayScore) > Number(homeScore);
+      const hLead = Number(homeScore) > Number(awayScore);
+
+      const hasPossAway = away?.details?.possession ?? false;
+      const hasPossHome = home?.details?.possession ?? false;
+      const redzone = comp?.situation?.isRedZone ? '<span class="redzone">RZ</span>' : '';
+
+      const venue = comp?.venue?.fullName ? `${comp.venue.fullName}` : '';
+      const network = comp?.broadcasts?.[0]?.names?.[0] || comp?.broadcasts?.[0]?.market || '';
+      const when = comp?.date ? fmtTime(comp.date) : '';
+
+      return `
+        <article class="card">
+          <div class="row">
+            <div class="team ${aLead ? 'leader':''}">
+              <img alt="Away logo" src="${logoFor(away?.team)}" loading="lazy">
+              <div class="name">${away?.team?.displayName || away?.team?.name || 'Away'} ${possessionDot(hasPossAway)}</div>
+            </div>
+            <div class="score">${awayScore}</div>
+          </div>
+
+          <div class="row">
+            <div class="team ${hLead ? 'leader':''}">
+              <img alt="Home logo" src="${logoFor(home?.team)}" loading="lazy">
+              <div class="name">${home?.team?.displayName || home?.team?.name || 'Home'} ${possessionDot(hasPossHome)} ${redzone}</div>
+            </div>
+            <div class="score">${homeScore}</div>
+          </div>
+
+          <div class="status">
+            <div>${statusPill(comp)}</div>
+            <div class="tiny">${venue ? venue + ' · ' : ''}${network ? network + '' : ''}</div>
+          </div>
+        </article>
+      `;
+    }
+
+    async function fetchScores(){
+      try{
+        refreshBtn.disabled = true; refreshBtn.textContent = "Refreshing…";
+        const res = await fetch(ENDPOINT, { cache: "no-store" });
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        events = data?.events || [];
+        renderPage();
+        const ts = new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit', second:'2-digit'});
+        foot.innerHTML = `Last updated ${ts}`;
+      }catch(err){
+        console.error(err);
+        grid.innerHTML = `
+          <div class="card">
+            <div>Couldn’t load scores.</div>
+            <div class="tiny">Your network may block the ESPN JSON, or ESPN changed their schema.</div>
+          </div>`;
+      }finally{
+        refreshBtn.disabled = false; refreshBtn.textContent = "↻ Refresh";
+      }
+    }
+
+    // Pager buttons + arrows
+    prevBtn.addEventListener("click", ()=>{ currentPage--; renderPage(); });
+    nextBtn.addEventListener("click", ()=>{ currentPage++; renderPage(); });
+    window.addEventListener("keydown", (e)=>{
+      if(e.key === "ArrowLeft" && !prevBtn.disabled){ currentPage--; renderPage(); }
+      if(e.key === "ArrowRight" && !nextBtn.disabled){ currentPage++; renderPage(); }
+    });
+
+    refreshBtn.addEventListener("click", fetchScores);
+    layoutSel.addEventListener("change", e => {
+      const oldPerPage = perPage;
+      parseLayout(e.target.value);
+      if(oldPerPage !== perPage){
+        const firstIndex = currentPage * oldPerPage;
+        currentPage = Math.floor(firstIndex / perPage);
+      }
+      fitToViewport();
+      renderPage();
+    });
+    window.addEventListener("resize", ()=>{ fitToViewport(); });
+    document.addEventListener("fullscreenchange", ()=>{ setTimeout(fitToViewport, 50); });
+
+    // Init
+    parseLayout(layoutSel.value);
+    fitToViewport();
+    fetchScores();
+    setInterval(fetchScores, REFRESH_MS);
+
+    /* =================== BIG PLAY POPUP (from your file) =================== */
     // Config
     const BIGPLAY = {
       hoursBack: 1,
-      fixedDates: null,
+      fixedDates: null,         // e.g. '20250101-20250101' for testing
       pollMs: 20_000,
       bigGainYards: 50,
-      sound: false,
-      vibrate: false,
+      sound: false,             // set true to enable beeps
+      vibrate: false,           // set true to vibrate on supported devices
       autoDismissMs: 10_000
     };
 
-    // Big-play keywords
+    // Optional proxy for CORS fallback; keep empty by default
+    const PROXY = ""; // e.g. 'https://r.jina.ai/http://'
+
     const BIGPLAY_KEYWORDS = [
-      // scoring
       'touchdown',' td ','td.','pick six','defensive touchdown',
       'two-point conversion','two point conversion',
       'field goal is good','field goal is no good',
-      // turnovers
       'interception','intercepted','fumble','sack fumble','turnover on downs',
-      // special teams
       'blocked punt','blocked kick','punt return','kickoff return','onside kick',
-      // misc
       'safety'
     ];
-
-    // Filters to skip noise
     const INCOMPLETE_RE = /\b(incomplete|incomp|falls incomplete|broken up|pass defended|passes? deflected)\b/i;
     const NO_PLAY_RE    = /\b(nullified|no play|offsetting penalties?)\b/i;
 
-    // Robust yard parser
     function yardsFrom(text) {
       const t = text || '';
       let m = /\bfor\s+(\d+)\s*(yards?|yds?)\b/i.exec(t);
@@ -198,38 +474,23 @@
       m = /\b(\d+)\s*[- ]?(yards?|yds?)\b/i.exec(t);
       return m ? parseInt(m[1], 10) : null;
     }
-
-    // Deep *completed* pass heuristic (optional backup when yards absent)
     function isDeepCompletedPass(text) {
       const t = (text || '').toLowerCase();
       return /\bdeep (left|right|middle)\b/.test(t) && /\bcomplete(d)?\b/.test(t);
     }
-
-    // Final big-play check
     function isBigPlay(play) {
       const t = (play.txt || '').toLowerCase();
-
-      // 🚫 Filter obvious non-plays / incompletions first
       if (INCOMPLETE_RE.test(t)) return false;
       if (NO_PLAY_RE.test(t)) return false;
-
-      // ✅ Keywords (TD, INT, fumble, etc.)
       if (BIGPLAY_KEYWORDS.some(k => t.includes(k))) return true;
-
-      // ✅ Yardage threshold (e.g., 30+)
       const y = yardsFrom(t);
       if ((y || 0) >= BIGPLAY.bigGainYards) return true;
-
-      // ✅ Deep completed pass heuristic
       if (isDeepCompletedPass(t)) return true;
-
       return false;
     }
 
-    // ESPN endpoints
     const ESPN_SCOREBOARD = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
     const ESPN_SUMMARY    = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=';
-
     const seenPlays = new Set();
     let beepStopper = null;
 
@@ -238,19 +499,15 @@
     const elText    = document.getElementById('bigplay-text');
     const elBadge   = document.getElementById('bigplay-badge');
 
-    // Contrast calc for team text
     function contrastText(hex) {
       const h = (hex || '').replace('#','') || '20c997';
       const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
       const L = 0.299*r + 0.587*g + 0.114*b;
       return L > 140 ? '#031018' : '#e9eefc';
     }
-
-    // Apply team theme + logo
     function applyTeamTheme(style) {
       const logoEl = document.getElementById('bigplay-logo');
       const color = style?.color ? ('#' + String(style.color).replace('#','')) : null;
-
       if (color) {
         document.documentElement.style.setProperty('--team', color);
         document.documentElement.style.setProperty('--team-contrast', contrastText(color));
@@ -258,7 +515,6 @@
         document.documentElement.style.setProperty('--team', '#20c997');
         document.documentElement.style.setProperty('--team-contrast', '#031018');
       }
-
       if (style?.logo) {
         logoEl.src = style.logo;
         logoEl.style.display = 'block';
@@ -267,12 +523,8 @@
         logoEl.style.display = 'none';
       }
     }
-
-    // ===== NEW: robust team style maps =====
     function buildTeamStyleMaps(summaryJson) {
-      const byId = {};
-      const byAbbr = {};
-
+      const byId = {}, byAbbr = {};
       const put = (rec) => {
         if (!rec) return;
         const id = rec.id ? String(rec.id) : '';
@@ -289,8 +541,6 @@
         if (id)   byId[id] = style;
         if (abbr) byAbbr[abbr] = style;
       };
-
-      // Source 1: header.competitions[0].competitors
       const comps = summaryJson?.header?.competitions?.[0]?.competitors || [];
       for (const c of comps) {
         const t = c?.team || {};
@@ -300,13 +550,9 @@
           nameShort: t?.shortDisplayName || t?.displayName,
           nameFull: t?.displayName || t?.shortDisplayName,
           color: t?.color || c?.color,
-          logo:
-            (Array.isArray(t?.logos) && t.logos[0]?.href) ||
-            t?.logo || t?.logos?.href || null
+          logo: (Array.isArray(t?.logos) && t.logos[0]?.href) || t?.logo || t?.logos?.href || null
         });
       }
-
-      // Source 2: boxscore.teams (optional)
       const bsTeams = summaryJson?.boxscore?.teams || [];
       for (const bt of bsTeams) {
         const t = bt?.team || bt;
@@ -316,49 +562,26 @@
           nameShort: t?.shortDisplayName || t?.displayName,
           nameFull: t?.displayName || t?.shortDisplayName,
           color: t?.color,
-          logo:
-            (Array.isArray(t?.logos) && t.logos[0]?.href) ||
-            t?.logo || t?.logos?.href || null
+          logo: (Array.isArray(t?.logos) && t.logos[0]?.href) || t?.logo || t?.logos?.href || null
         });
       }
-
       return { byId, byAbbr };
     }
-
     function resolveTeamStyle(rec, maps) {
       const { byId, byAbbr } = maps;
-      const tryIds = [
-        rec?.team?.id,
-        rec?.start?.team?.id,
-        rec?.end?.team?.id
-      ].filter(Boolean).map(String);
-
-      for (const id of tryIds) {
-        if (byId[id]) return byId[id];
-      }
-
-      const rawAbbr =
-        (rec?.team?.abbreviation ||
-         rec?.team?.shortDisplayName ||
-         rec?.start?.team?.abbreviation ||
-         rec?.end?.team?.abbreviation ||
-         '').toUpperCase();
+      const tryIds = [rec?.team?.id, rec?.start?.team?.id, rec?.end?.team?.id].filter(Boolean).map(String);
+      for (const id of tryIds) if (byId[id]) return byId[id];
+      const rawAbbr = (rec?.team?.abbreviation || rec?.team?.shortDisplayName ||
+                       rec?.start?.team?.abbreviation || rec?.end?.team?.abbreviation || '').toUpperCase();
       if (rawAbbr && byAbbr[rawAbbr]) return byAbbr[rawAbbr];
-
-      if (rawAbbr) {
-        return { id: '', abbr: rawAbbr, nameShort: rawAbbr, nameFull: rawAbbr, color: '3aa0ff', logo: null };
-      }
+      if (rawAbbr) return { id: '', abbr: rawAbbr, nameShort: rawAbbr, nameFull: rawAbbr, color: '3aa0ff', logo: null };
       return null;
     }
-    // ===== /NEW =====
 
     function showPopup(meta, text, teamStyle) {
       applyTeamTheme(teamStyle);
-
-      // Prefer full name, then short, then abbr
       const name = teamStyle?.nameFull || teamStyle?.nameShort || teamStyle?.abbr || '';
       elBadge.textContent = name ? `${name} BIG PLAY` : '🔥 BIG PLAY 🔥';
-
       elMeta.textContent = meta || '';
       elText.textContent = text || '';
       elOverlay.style.display = 'flex';
@@ -401,65 +624,53 @@
         const r = await fetch(url, { cache: 'no-store' });
         if (r.ok) return r.json();
       } catch (_) {}
-      const rp = await fetch(PROXY + encodeURIComponent(url), { cache: 'no-store' });
-      if (!rp.ok) throw new Error('HTTP ' + rp.status);
-      return rp.json();
+      if (typeof PROXY === 'string' && PROXY) {
+        const rp = await fetch(PROXY + encodeURIComponent(url), { cache: 'no-store' });
+        if (rp.ok) return rp.json();
+      }
+      throw new Error('Fetch failed for ' + url);
     }
 
-    // 1) Get NFL events for our window
     async function getEventIds() {
       const url = `${ESPN_SCOREBOARD}?limit=1000&dates=${encodeURIComponent(datesParam())}`;
       const j = await fetchJSON(url);
-      const events = j?.events || [];
-      return events.map(e => String(e?.id)).filter(Boolean);
+      const evs = j?.events || [];
+      return evs.map(e => String(e?.id)).filter(Boolean);
     }
 
-    // 2) For each event, fetch summary and yield plays with text + team style
     async function* getPlaysForEvents(eventIds) {
       for (const id of eventIds) {
         try {
           const j = await fetchJSON(ESPN_SUMMARY + encodeURIComponent(id));
-
-          // Build team style maps once per event
           const maps = buildTeamStyleMaps(j);
 
-          // A) Scoring plays
+          // Scoring plays
           for (const s of (j?.scoringPlays || [])) {
             const style = resolveTeamStyle(s, maps);
-            const abbr  = (style?.abbr ||
-                           s?.team?.abbreviation ||
-                           s?.team?.shortDisplayName || '').toUpperCase();
-
+            const abbr  = (style?.abbr || s?.team?.abbreviation || s?.team?.shortDisplayName || '').toUpperCase();
             yield {
               id: `sc_${id}_${s.id ?? s.sequenceNumber ?? Math.random()}`,
               qtr: s?.period?.number ?? s?.period,
               clk: s?.clock?.displayValue ?? s?.clock,
-              teamAbbr: abbr,
-              teamStyle: style,
+              teamAbbr: abbr, teamStyle: style,
               txt: s?.text ?? s?.description ?? ''
             };
           }
-
-          // B) Drive plays
+          // Drive plays (current + previous)
           const driveBlocks = [j?.drives?.current, ...(j?.drives?.previous || [])].filter(Boolean);
           for (const block of driveBlocks) {
             for (const p of (block.plays || [])) {
               const style = resolveTeamStyle(p, maps);
-              const abbr  = (style?.abbr ||
-                             p?.team?.abbreviation ||
-                             p?.team?.shortDisplayName || '').toUpperCase();
-
+              const abbr  = (style?.abbr || p?.team?.abbreviation || p?.team?.shortDisplayName || '').toUpperCase();
               yield {
                 id: `pbp_${id}_${p.id ?? p.sequenceNumber ?? Math.random()}`,
                 qtr: p?.period?.number ?? p?.period,
                 clk: p?.clock?.displayValue ?? p?.clock,
-                teamAbbr: abbr,
-                teamStyle: style,
+                teamAbbr: abbr, teamStyle: style,
                 txt: p?.text ?? p?.shortText ?? p?.type?.text ?? ''
               };
             }
           }
-
         } catch (e) {
           console.warn('[SUMMARY] failed for event', id, e);
         }
@@ -469,7 +680,6 @@
     async function pollPbp() {
       try {
         const eventIds = await getEventIds();
-        console.log('[PBP] dates=', datesParam(), 'events=', eventIds.length);
         for await (const p of getPlaysForEvents(eventIds)) {
           if (!p.txt) continue;
           if (seenPlays.has(p.id)) continue;
@@ -492,10 +702,11 @@
     }
     pollPbp();
 
-    /* ========= MANUAL TEST HOOK ========= */
+    // Manual test hook + button
     window.bigPlayTest = function(meta = 'TEST · Q1 · 10:00', text = 'Fake 80-yard TD for testing!') {
       showPopup(meta, text, { color: 'ff6b6b', logo: '' });
     };
+    testPopupBtn.addEventListener('click', () => window.bigPlayTest());
   </script>
 </body>
 </html>

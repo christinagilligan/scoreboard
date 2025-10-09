@@ -281,7 +281,7 @@
       const network = comp?.broadcasts?.[0]?.names?.[0] || comp?.broadcasts?.[0]?.market || '';
 
       /* Keep only venue & network (no start time) */
-      const tinyLine = (venue && network) ? `${venue} · ${network}` : (venue || network || '');
+      const tinyLine = (network) ? `${network}` : (venue || network || '');
 
       return `
         <article class="card">
